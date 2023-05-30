@@ -1,0 +1,32 @@
+version: "3.9"
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - 22181:2181 # External:internal(within the container environment)
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - overlay-network
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    ports:
+      - 29092:9092 # External:internal(within the container environment)
+    depends_on:
+      - zookeeper
+    networks:
+      - overlay-network
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Способ объявления слушателей для Kafka-брокера,
+      # которые будут доступны клиентам извне контейнера
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL_LISTENER://kafka:9092,EXTERNAL_LESTENER://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL_LISTENER:PLAINTEXT,EXTERNAL_LESTENER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL_LISTENER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # single node cluster
+      
