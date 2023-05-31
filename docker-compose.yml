@@ -34,7 +34,7 @@ services:
     container_name: kafka-connect
     build:
       context: .
-      dockerfile: connect-mongodb.Dockerfile
+      dockerfile: mongodb.Dockerfile
     depends_on:
       - kafka
     networks:
@@ -43,34 +43,39 @@ services:
       - 28083:8083
     environment:
       CONNECT_GROUP_ID: 1
-      CONNECT_BOOTSTRAP_SERVERS: "kafka:9092"
-      CONNECT_ZOOKEEPER_CONNECT: "zookeeper:2181"
-      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
-      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
-      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_ZOOKEEPER_CONNECT: zookeeper:2181
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_REST_PORT: 8083
+      CONNECT_CONFIG_STORAGE_TOPIC: ana-config-topic
+      CONNECT_OFFSET_STORAGE_TOPIC: ana-offset-topic
+      CONNECT_STATUS_STORAGE_TOPIC: ana-status-topic
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
 
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    ports:
-      - 8090:8080
-    restart: always
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-      DYNAMIC_CONFIG_ENABLED: true
-    depends_on:
-      - kafka-connect
-    networks:
-      - ana-overlay-network    
+  # kafka-ui:
+  #   image: provectuslabs/kafka-ui:latest
+  #   container_name: kafka-ui
+  #   ports:
+  #     - 8090:8080
+  #   restart: always
+  #   environment:
+  #     KAFKA_CLUSTERS_0_NAME: local
+  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+  #     KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+  #     DYNAMIC_CONFIG_ENABLED: true
+  #   depends_on:
+  #     - kafka-connect
+  #   networks:
+  #     - ana-overlay-network    
   
   mongodb-source:
     image: mongo:latest
     container_name: mongodb-source
-    ports:
-      - 27017:7017
     networks:
       - ana-overlay-network
     command: mongod --replSet ana-replication-set --bind_ip_all # will be executes inside the container when it starts
@@ -78,11 +83,54 @@ services:
   mongodb-target:
     image: mongo:latest
     container_name: mongodb-target
-    ports:
-      - 27017:7017
     networks:
       - ana-overlay-network
     command: mongod --replSet ana-replication-set --bind_ip_all
+
+  mongodb-source-setup:
+    image: mongo:latest
+    container_name: mongodb-source-setup
+    depends_on:
+      - mongodb-source
+    restart: no
+    command: >
+      mongosh --host mongodb-source:27017 --eval '
+      rsconf = {
+        _id: "ana-replication-set",
+        members: [{ _id: 0, host: "mongodb-source:27017", priority: 1.0 }],
+      };
+      rs.initiate(rsconf);
+      rs.status();
+      '
+    networks:
+      - ana-overlay-network
+
+  mongodb-target-setup:
+    image: mongo:latest
+    container_name: mongodb-target-setup
+    depends_on:
+      - mongodb-target
+    restart: no
+    networks:
+      - ana-overlay-network
+    command: >
+      mongosh --host mongodb-target:27017 --eval '
+      rsconf = {
+        _id: "ana-replication-set",
+        members: [{ _id: 0, host: "mongodb-target:27017", priority: 1.0 }],
+      };
+      rs.initiate(rsconf);
+      rs.status();
+      '
+
+  http-client:
+    image: curlimages/curl:latest
+    container_name: http-client
+    networks:
+      - ana-overlay-network
+    command: sleep infinity
+    volumes:
+      - ./connectors:/home/curl_user/
 
 networks:
   ana-overlay-network:
