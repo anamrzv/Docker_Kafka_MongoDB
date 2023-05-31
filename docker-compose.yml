@@ -9,7 +9,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     networks:
-      - overlay-network
+      - ana-overlay-network
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -19,7 +19,7 @@ services:
     depends_on:
       - zookeeper
     networks:
-      - overlay-network
+      - ana-overlay-network
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -29,4 +29,62 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL_LISTENER:PLAINTEXT,EXTERNAL_LESTENER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL_LISTENER
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # single node cluster
-      
+
+  kafka-connect:
+    container_name: kafka-connect
+    build:
+      context: .
+      dockerfile: connect-mongodb.Dockerfile
+    depends_on:
+      - kafka
+    networks:
+      - ana-overlay-network
+    ports:
+      - 28083:8083
+    environment:
+      CONNECT_GROUP_ID: 1
+      CONNECT_BOOTSTRAP_SERVERS: "kafka:9092"
+      CONNECT_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_REST_PORT: 8083
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - 8090:8080
+    restart: always
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      DYNAMIC_CONFIG_ENABLED: true
+    depends_on:
+      - kafka-connect
+    networks:
+      - ana-overlay-network    
+  
+  mongodb-source:
+    image: mongo:latest
+    container_name: mongodb-source
+    ports:
+      - 27017:7017
+    networks:
+      - ana-overlay-network
+    command: mongod --replSet ana-replication-set --bind_ip_all # will be executes inside the container when it starts
+
+  mongodb-target:
+    image: mongo:latest
+    container_name: mongodb-target
+    ports:
+      - 27017:7017
+    networks:
+      - ana-overlay-network
+    command: mongod --replSet ana-replication-set --bind_ip_all
+
+networks:
+  ana-overlay-network:
+    driver: overlay
+    attachable: true
