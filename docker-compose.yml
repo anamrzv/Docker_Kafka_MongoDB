@@ -57,21 +57,21 @@ services:
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
 
-  # kafka-ui:
-  #   image: provectuslabs/kafka-ui:latest
-  #   container_name: kafka-ui
-  #   ports:
-  #     - 8090:8080
-  #   restart: always
-  #   environment:
-  #     KAFKA_CLUSTERS_0_NAME: local
-  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-  #     KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-  #     DYNAMIC_CONFIG_ENABLED: true
-  #   depends_on:
-  #     - kafka-connect
-  #   networks:
-  #     - ana-overlay-network    
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - 8090:8080
+    restart: always
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      DYNAMIC_CONFIG_ENABLED: true
+    depends_on:
+      - kafka-connect
+    networks:
+      - ana-overlay-network    
   
   mongodb-source:
     image: mongo:latest
@@ -93,6 +93,8 @@ services:
     depends_on:
       - mongodb-source
     restart: no
+    networks:
+      - ana-overlay-network
     command: >
       mongosh --host mongodb-source:27017 --eval '
       rsconf = {
@@ -102,8 +104,6 @@ services:
       rs.initiate(rsconf);
       rs.status();
       '
-    networks:
-      - ana-overlay-network
 
   mongodb-target-setup:
     image: mongo:latest
@@ -132,6 +132,19 @@ services:
     volumes:
       - ./connectors:/home/curl_user/
 
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.2.2
+    hostname: schema-registry
+    container_name: schema-registry
+    depends_on:
+      - kafka
+    networks:
+      - ana-overlay-network
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+  
 networks:
   ana-overlay-network:
     driver: overlay
