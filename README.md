@@ -49,7 +49,7 @@ db.users.insertOne({
 ```
 docker compose exec -it mongodb-target mongosh
 ```
-Добавление объекта
+Проверка объекта
 ```
 db.users.find()
 ```
